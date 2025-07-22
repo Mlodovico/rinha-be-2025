@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { MongoClient, Db, Collection } from 'mongodb';
 import Payment from 'src/modules/payment/model/payment';
-import CircuitBreaker from 'opossum';
+import { createCircuitBreaker } from '../hook/circuitBreaker';
 
 @Injectable()
 export default class PaymentRepository {
@@ -9,17 +9,32 @@ export default class PaymentRepository {
   private client = new MongoClient(this.uri);
   private db: Db;
   private paymentCollection: Collection<Payment>;
-  private paymentBreaker: CircuitBreaker;
+  private paymentBreaker = createCircuitBreaker(this.insertPayment.bind(this), {
+    timeout: 5000,
+    errorThresholdPercentage: 50,
+    resetTimeout: 10000,
+  });
 
   constructor() {
     this.client = new MongoClient(this.uri);
+
+    this.paymentBreaker = createCircuitBreaker(this.insertPayment.bind(this), {
+      timeout: 5000, // 5 seconds
+      errorThresholdPercentage: 50, // Open the circuit if 50% of requests fail
+      resetTimeout: 10000, // Wait 10 seconds before trying again
+    });
   }
 
   async connect() {
-    if (!this.client.isConnected()) {
-      await this.client.connect();
-      this.db = this.client.db('payment-database');
-      this.paymentCollection = this.db.collection<Payment>('payments');
+    if (!this.db) {
+      try {
+        await this.client.connect();
+        this.db = this.client.db('payment-database');
+        this.paymentCollection = this.db.collection<Payment>('payments');
+      } catch (error) {
+        console.error('Failed to connect to MongoDB:', error);
+        throw new Error('Database connection failed');
+      }
     }
   }
 
