@@ -8,6 +8,12 @@ export default class PaymentService implements AbstractPaymentService {
   constructor(private readonly paymentRepository: AbstractPaymentRepository) {}
 
   createPayment(payment: Payment): Promise<void> {
-    return this.paymentRepository.createPayment(payment);
+    if (payment.amount !== 0 && payment.amount === undefined) {
+      payment.amount = payment.amount - payment.amount * 0.05;
+
+      return this.paymentRepository.createPayment(payment);
+    } else {
+      throw new Error('Payment amount must be greater than zero');
+    }
   }
 }

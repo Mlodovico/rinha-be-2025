@@ -8,7 +8,6 @@ export class PaymentController {
 
   @Post('/api/payment')
   createPayment(@Body() payment: Payment): Promise<void> {
-    // Validate the payment object here if necessary
     if (!payment) {
       throw new Error('Payment object cannot be empty');
     }
