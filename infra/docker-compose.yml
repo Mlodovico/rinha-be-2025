@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: mongo:6.0.6
+    ports:
+      - 5432:5432
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 60MB
+  
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    ports:
+      - 15672:15672
+      - 5672:5672
+    environment:
+      - RABBITMQ_DEFAULT_USER=admin
+      - RABBITMQ_DEFAULT_PASS=admin
+    volumes:
+      - ./rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_running"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 160MB
+
+  backend1: &backend
+    image: andersonhqds/nestjs-rinha-be-2025:1.0.0
+    container_name: backend1
+    hostname: backend1
+    ports:
+      - 3000:3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    networks:
+      - backend
+      - payment-processor
+    deploy:
+      resources:
+        limits:
+          cpus: '0.4'
+          memory: 60MB
+
+  backend2:
+    <<: *backend
+    container_name: backend2
+    hostname: backend2
+    ports:
+      - 3001:3000
+
+  nginx:
+    image: nginx:latest
+    ports:
+      - 9999:9999
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+    networks:
+      - backend
+    depends_on:
+      backend1:
+        condition: service_started
+      backend2:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 10MB
+
+networks:
+  backend:
+    driver: bridge
+  payment-processor:
+    external: true
